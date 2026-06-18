@@ -123,6 +123,7 @@ const defaultConfig = {
   hitokoto: {
     enabled: true,
     endpoint: "https://v1.hitokoto.cn/",
+    c: "a",
     refreshInterval: 3600000,
   },
   socials: [],
@@ -363,6 +364,10 @@ function useHitokoto(config) {
     }),
     [config.site.quote.text, config.site.quote.title],
   );
+  const requestUrl = useMemo(
+    () => getHitokotoRequestUrl(config.hitokoto),
+    [config.hitokoto.endpoint, config.hitokoto.c],
+  );
   const [hitokoto, setHitokoto] = useState(fallback);
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
@@ -383,7 +388,7 @@ function useHitokoto(config) {
       setLoading(true);
 
       try {
-        const response = await fetch(config.hitokoto.endpoint, {
+        const response = await fetch(requestUrl, {
           cache: "no-store",
         });
 
@@ -425,7 +430,7 @@ function useHitokoto(config) {
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [config.hitokoto.enabled, config.hitokoto.endpoint, config.hitokoto.refreshInterval, fallback]);
+  }, [config.hitokoto.enabled, config.hitokoto.refreshInterval, fallback, requestUrl]);
 
   const refreshHitokoto = async () => {
     if (!config.hitokoto.enabled || loading) return;
@@ -435,7 +440,7 @@ function useHitokoto(config) {
     setLoading(true);
 
     try {
-      const response = await fetch(config.hitokoto.endpoint, {
+      const response = await fetch(requestUrl, {
         cache: "no-store",
       });
 
@@ -462,6 +467,18 @@ function useHitokoto(config) {
   };
 
   return { hitokoto, refreshHitokoto, loading };
+}
+
+function getHitokotoRequestUrl(hitokotoConfig) {
+  const endpoint = hitokotoConfig.endpoint || defaultConfig.hitokoto.endpoint;
+  const url = new URL(endpoint, window.location.href);
+  const category = String(hitokotoConfig.c || defaultConfig.hitokoto.c).trim();
+
+  if (category) {
+    url.searchParams.set("c", category);
+  }
+
+  return url.toString();
 }
 
 function useWeather(config, clock) {

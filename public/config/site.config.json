@@ -48,6 +48,7 @@
   "hitokoto": {
     "enabled": true,
     "endpoint": "https://v1.hitokoto.cn/",
+    "c": "a",
     "refreshInterval": 3600000
   },
   "socials": [
