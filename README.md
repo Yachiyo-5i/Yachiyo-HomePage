@@ -1,65 +1,39 @@
-# Personal Home
+# 月見ヤチヨ
 
-A configurable personal homepage built with React and Vite.
+[中文](README.md) / [日本語](README.ja.md)
 
-## Development
+ヤオヨロー！
 
-```bash
-npm install
-PORT=4180 npm run serve
-npm run dev
-```
+我是月見ヤチヨ。也可以叫我月见八千代。
+虚拟空间「ツクヨミ」的管理人，兼任这里最会把气氛点亮的ライバー。
+要是你是第一次来到这个频道，就先别紧张。抬头看看月亮，深呼吸一下，然后把声音交给我吧。
 
-`npm run dev` serves the Vite app on `http://127.0.0.1:5173/` and proxies `/api` to the local Node server on port `4180`.
+## ツクヨミへようこそ
 
-## Production Preview
+这里是歌声、记忆、创作和一点点奇迹交错的地方。
+我负责把入口打开，把舞台调亮，把迷路的人带到还能看见光的位置。
 
-```bash
-npm run build
-PORT=4180 npm run serve
-```
+你可以只是路过，也可以把心事悄悄放下。
+只要这片虚拟夜空还在闪耀，ツクヨミ 就还会为你留着一盏灯。
 
-The Node server serves `dist/` and exposes the QQ Music proxy APIs used by the player.
+## 8000歳だけど、まだまだ配信中
 
-## Cloudflare Pages
+年龄？嗯，大概八千岁左右。
+身份？神秘 AI。
+特长？唱歌、跳舞、分身，还有在大家以为频道快要冷掉的时候，突然把演出开到最大。
 
-Use these build settings when connecting the repository to Cloudflare Pages:
+不过呢，比起夸张的登场和热闹的弹幕，我更喜欢看见你们把自己的想法变成作品。
+哪怕只是很小的一点光，也没关系。我会看见的。
 
-```text
-Framework preset: Vite
-Build command: npm run build
-Build output directory: dist
-Install command: npm ci
-```
+## 今宵も、いざなっちゃうよ
 
-The project also includes `wrangler.toml` with `pages_build_output_dir = "dist"` for Pages configuration. The QQ Music proxy is implemented again in `functions/api/qq/[endpoint].js`, so `/api/qq/playlist` and `/api/qq/song-url` work on Cloudflare Pages without running `server.mjs`.
+如果你听见音乐开始播放，说明频道已经接通。
+如果你看见时间慢慢流动，说明我们又在同一个夜晚相遇。
 
-For direct upload from this machine, run:
+所以，今天也把肩膀放松一点吧。
+这里没有必须立刻完成的任务，也没有必须说出口的答案。
 
-```bash
-npm run deploy:pages
-```
+我会在这里。
+等下一首歌，等下一次刷新，也等你再次路过。
 
-## Runtime Config
-
-Public, non-sensitive display data lives in:
-
-```text
-public/config/site.config.json
-```
-
-After `npm run build`, Vite copies it to:
-
-```text
-dist/config/site.config.json
-```
-
-The browser fetches this JSON at runtime and checks it every few seconds. You can edit `dist/config/site.config.json` after deployment and the opened page will update automatically when the JSON changes.
-
-Do not put API keys, tokens, passwords, or private data in this file. Anything the browser can read is public. Use a small server API and `.env` for sensitive values later, for example weather provider keys.
-
-## QQ Music Player
-
-Set `player.provider` to `qq` and put a QQ Music playlist URL or playlist id in `player.playlistUrl`.
-
-The local Node server reads the public playlist and requests temporary playback URLs from QQ Music Web endpoints. Some songs may not play because of VIP, region, login, copyright, or temporary signature restrictions.
+ヤオヨロー、また会おうね。
