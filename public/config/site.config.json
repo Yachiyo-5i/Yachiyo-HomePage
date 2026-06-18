@@ -5,7 +5,7 @@
     "name": "Yachiyo",
     "owner": "Yachiyo",
     "logoText": "Yachiyo",
-    "logoImage": "/chou-kaguyahime-avatars/yachiyo-avatar.png",
+    "logoImage": "/images/avatar/site-avatar.png",
     "quote": {
       "title": "Ex-Otogibanashi",
       "text": "めちゃくちゃ笑ってるのに 涙止まんない"
@@ -88,7 +88,7 @@
       "title": "主页",
       "description": "返回主站与个人入口",
       "icon": "rss",
-      "url": "https://yachiyo.im"
+      "url": "https://me.yachiyo.im"
     },
     {
       "id": "Proxy",

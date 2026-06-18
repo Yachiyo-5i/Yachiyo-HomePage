@@ -6,7 +6,7 @@ Before making substantial visual changes, use the Product Design plugin's `get-c
 
 When implementing from a selected generated mock, treat that image as the source of truth for layout, component anatomy, density, spacing, color, typography, visible content, and hierarchy.
 
-Prototype decision: use the images in `public/chou-kaguyahime-posters` as rotating page backgrounds. Detect the viewport orientation, choose from `landscape/` or `portrait/`, and let a page refresh pick a new image.
+Prototype decision: use the images in `public/images/backgrounds` as rotating page backgrounds. Detect the viewport orientation, choose from `landscape/` or `portrait/`, and let a page refresh pick a new image.
 
 Prototype decision: on mobile, the two top info cards in `.info-grid` should stay side by side with equal height, each taking half the row width.
 
