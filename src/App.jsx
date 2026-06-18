@@ -28,6 +28,7 @@ const PLAYER_STORAGE_KEY = "home:player-state";
 const WEATHER_STORAGE_KEY = "home:weather-cache";
 const PLAYER_MODES = new Set(["order", "single", "random"]);
 const PLAYER_IDLE_DELAY = 3000;
+const QQ_MUSIC_GUID = "10000";
 const WEATHER_CODES = {
   0: "晴",
   1: "大部晴朗",
@@ -1487,7 +1488,13 @@ function Player({ player }) {
       });
       const data = await response.json();
 
-      if (!response.ok || !data.url) {
+      if (!response.ok) {
+        throw new Error(data.error || "无法获取播放地址");
+      }
+
+      const playableUrl = data.url || await resolveQqPlayableUrl(data.resolver);
+
+      if (!playableUrl) {
         throw new Error(data.error || "无法获取播放地址");
       }
 
@@ -1495,7 +1502,7 @@ function Player({ player }) {
 
       lastAudioErrorRef.current = "";
       playContextRef.current = { index, failedIndexes, resumeTime };
-      setAudioSrc(data.url);
+      setAudioSrc(playableUrl);
       setPlaying(shouldPlay);
     } catch (playError) {
       if (playRequestRef.current !== requestId) return;
@@ -1860,6 +1867,95 @@ function findStoredTrackIndex(tracks, storedTrack) {
     storedTrack.index < tracks.length
     ? storedTrack.index
     : 0;
+}
+
+function resolveQqPlayableUrl(resolver) {
+  if (resolver?.provider !== "qq-musicu-jsonp" || typeof window === "undefined") {
+    return Promise.resolve("");
+  }
+
+  const mid = resolver.mid;
+  const mediaMid = resolver.mediaMid || mid;
+
+  if (!mid || !mediaMid) {
+    return Promise.resolve("");
+  }
+
+  const callbackName = `__qqMusicVkey_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  const payload = {
+    req_0: {
+      module: "vkey.GetVkeyServer",
+      method: "CgiGetVkey",
+      param: {
+        guid: QQ_MUSIC_GUID,
+        songmid: [mid],
+        songtype: [0],
+        uin: "0",
+        loginflag: 1,
+        platform: "20",
+        filename: [`M500${mediaMid}.mp3`],
+      },
+    },
+    comm: {
+      uin: "0",
+      format: "jsonp",
+      ct: 24,
+      cv: 0,
+    },
+  };
+  const search = new URLSearchParams({
+    callback: callbackName,
+    g_tk: "5381",
+    loginUin: "0",
+    hostUin: "0",
+    format: "jsonp",
+    inCharset: "utf8",
+    outCharset: "utf-8",
+    notice: "0",
+    platform: "yqq.json",
+    needNewCode: "0",
+    data: JSON.stringify(payload),
+  });
+  const script = document.createElement("script");
+  script.src = `https://u.y.qq.com/cgi-bin/musicu.fcg?${search}`;
+  script.async = true;
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      script.remove();
+      delete window[callbackName];
+    };
+    const timer = window.setTimeout(() => {
+      cleanup();
+      resolve("");
+    }, 8000);
+
+    window[callbackName] = (data) => {
+      const info = data?.req_0?.data?.midurlinfo?.[0];
+      const purl = info?.purl;
+      const sip =
+        data?.req_0?.data?.sip?.find((item) => item.startsWith("https://")) ||
+        data?.req_0?.data?.sip?.[0] ||
+        "https://dl.stream.qqmusic.qq.com/";
+
+      cleanup();
+      resolve(purl ? normalizeQqPlaybackUrl(new URL(purl, sip).toString()) : "");
+    };
+
+    script.onerror = () => {
+      cleanup();
+      resolve("");
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
+function normalizeQqPlaybackUrl(url) {
+  return url.startsWith("http://") ? url.replace("http://", "https://") : url;
 }
 
 function getPlayModeMeta(mode) {

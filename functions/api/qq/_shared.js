@@ -77,15 +77,19 @@ export async function handleSongUrl(url) {
     },
   };
 
-  const response = await fetch("https://u.y.qq.com/cgi-bin/musicu.fcg", {
-    method: "POST",
-    headers: {
-      ...qqHeaders(),
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
+  let response;
+  let data;
+
+  try {
+    response = await fetch(buildMusicuUrl(payload), {
+      headers: qqHeaders(),
+    });
+    data = await response.json();
+  } catch (error) {
+    console.warn(error);
+    return sendClientResolver(mid, mediaMid, "QQ Music request failed");
+  }
+
   const info = data?.req_0?.data?.midurlinfo?.[0];
   const purl = info?.purl;
   const sip =
@@ -94,14 +98,7 @@ export async function handleSongUrl(url) {
     "https://dl.stream.qqmusic.qq.com/";
 
   if (!response.ok || !purl) {
-    return sendJson(
-      {
-        error:
-          "No playable URL returned. The song may require VIP/login or be region restricted.",
-        detail: info?.tips || info?.errtype || "",
-      },
-      404,
-    );
+    return sendClientResolver(mid, mediaMid, info?.tips || info?.errtype || "");
   }
 
   return sendJson({
@@ -171,6 +168,37 @@ function normalizeCover(url) {
 
 function normalizePlaybackUrl(url) {
   return url.startsWith("http://") ? url.replace("http://", "https://") : url;
+}
+
+function buildMusicuUrl(payload) {
+  const search = new URLSearchParams({
+    "-": `getplaysongvkey${Date.now()}`,
+    g_tk: "5381",
+    loginUin: "0",
+    hostUin: "0",
+    format: "json",
+    inCharset: "utf8",
+    outCharset: "utf-8",
+    notice: "0",
+    platform: "yqq.json",
+    needNewCode: "0",
+    data: JSON.stringify(payload),
+  });
+
+  return `https://u.y.qq.com/cgi-bin/musicu.fcg?${search}`;
+}
+
+function sendClientResolver(mid, mediaMid, detail = "") {
+  return sendJson({
+    resolver: {
+      provider: "qq-musicu-jsonp",
+      mid,
+      mediaMid,
+    },
+    error:
+      "No playable URL returned from the server-side QQ Music request. Use browser-side resolver.",
+    detail,
+  });
 }
 
 function stripHtml(value) {
