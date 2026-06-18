@@ -77,19 +77,19 @@ const defaultConfig = {
   version: "fallback",
   refreshInterval: 5000,
   site: {
-    name: "nnk.im",
-    owner: "nanako",
-    logoText: "nnk.im",
+    name: "Yachiyo",
+    owner: "Yachiyo",
+    logoText: "Yachiyo",
     logoImage: "",
     quote: {
-      title: "Lemon",
-      text: "今でもあなたは私の光",
+      title: "Ex-Otogibanashi",
+      text: "めちゃくちゃ笑ってるのに 涙止まんない",
     },
     secretQuote: {
       title: "Oops!",
       text: "哎呀，这都被你发现了（再点击一次可关闭）",
     },
-    copyright: "Copyright © 2026 & Made by nanako",
+    copyright: "Copyright © 2026 & Made by Yachiyo",
     birthday: "2022-05-07T00:00:00+08:00",
   },
   locale: {
@@ -132,7 +132,7 @@ const defaultConfig = {
     playlistUrl: "",
     autoplay: false,
     title: "夜间频道",
-    artist: "nanako radio",
+    artist: "Yachiyo radio",
   },
 };
 
@@ -206,7 +206,7 @@ async function fetchRuntimeConfig() {
 }
 
 function useRuntimeConfig() {
-  const [config, setConfig] = useState(defaultConfig);
+  const [config, setConfig] = useState(null);
   const [status, setStatus] = useState("loading");
   const [updatedAt, setUpdatedAt] = useState(null);
   const versionRef = useRef(defaultConfig.version);
@@ -888,10 +888,17 @@ function SakuraMark({ src, label }) {
 }
 
 function ConfigPulse({ status, updatedAt }) {
+  const label =
+    status === "synced"
+      ? "config synced"
+      : status === "loading"
+        ? "config loading"
+        : "config offline";
+
   return (
     <div className="config-pulse" title="运行时配置同步状态">
       <span className={`pulse-dot ${status}`} />
-      <span>{status === "synced" ? "config synced" : "config offline"}</span>
+      <span>{label}</span>
       {updatedAt ? <small>{updatedAt.toLocaleTimeString()}</small> : null}
     </div>
   );
@@ -1867,18 +1874,14 @@ function getPlayModeMeta(mode) {
 
 export function App() {
   const { config, status, updatedAt } = useRuntimeConfig();
-  const clock = useClock(config);
-  const weather = useWeather(config, clock);
-  const progress = useProgress(config.site.birthday);
-  const { hitokoto, refreshHitokoto, loading: hitokotoLoading } = useHitokoto(config);
   const posterBackground = usePosterBackground();
-  const [capsuleOpen, setCapsuleOpen] = useState(false);
   const activeBackground =
-    posterBackground.image || config.appearance.backgroundImage;
+    posterBackground.image || config?.appearance?.backgroundImage;
   const accentStyle = {
-    "--accent": config.appearance.accent,
-    "--accent-2": config.appearance.accent2,
-    "--glass-strength": config.appearance.glassStrength,
+    "--accent": config?.appearance?.accent ?? defaultConfig.appearance.accent,
+    "--accent-2": config?.appearance?.accent2 ?? defaultConfig.appearance.accent2,
+    "--glass-strength":
+      config?.appearance?.glassStrength ?? defaultConfig.appearance.glassStrength,
     backgroundImage: activeBackground
       ? `linear-gradient(120deg, rgba(8, 8, 10, .55), rgba(18, 18, 20, .74)), url(${activeBackground})`
       : undefined,
@@ -1886,7 +1889,7 @@ export function App() {
 
   return (
     <main
-      className={`home-shell poster-${posterBackground.orientation}`}
+      className={`home-shell poster-${posterBackground.orientation} ${config ? "config-ready" : "config-pending"}`}
       style={accentStyle}
     >
       <div className="grain" />
@@ -1897,6 +1900,20 @@ export function App() {
 
       <ConfigPulse status={status} updatedAt={updatedAt} />
 
+      {config ? <HomeView config={config} /> : null}
+    </main>
+  );
+}
+
+function HomeView({ config }) {
+  const clock = useClock(config);
+  const weather = useWeather(config, clock);
+  const progress = useProgress(config.site.birthday);
+  const { hitokoto, refreshHitokoto, loading: hitokotoLoading } = useHitokoto(config);
+  const [capsuleOpen, setCapsuleOpen] = useState(false);
+
+  return (
+    <>
       <section
         className={`stage ${capsuleOpen ? "capsule-is-open" : ""}`}
         aria-label={config.site.name}
@@ -1945,6 +1962,6 @@ export function App() {
       <Player player={config.player} />
 
       <footer>{config.site.copyright}</footer>
-    </main>
+    </>
   );
 }
