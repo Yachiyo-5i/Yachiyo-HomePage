@@ -1,0 +1,116 @@
+{
+  "version": "2026-06-18-01",
+  "refreshInterval": 5000,
+  "site": {
+    "name": "Yachiyo",
+    "owner": "Yachiyo",
+    "logoText": "Yachiyo",
+    "logoImage": "/chou-kaguyahime-avatars/yachiyo-avatar.png",
+    "quote": {
+      "title": "Ex-Otogibanashi",
+      "text": "めちゃくちゃ笑ってるのに 涙止まんない"
+    },
+    "secretQuote": {
+      "title": "Oops!",
+      "text": "哎呀，这都被你发现了（再点击一次可关闭）"
+    },
+    "copyright": "Copyright © 2026 & Made by Yachiyo",
+    "birthday": "2023-05-07T00:00:00+08:00"
+  },
+  "locale": {
+    "autoDetect": true,
+    "fallbackLocale": "zh-CN",
+    "fallbackTimeZone": "Asia/Shanghai",
+    "dateFormat": "yyyy 年 MM 月 dd 日 EEEE",
+    "weatherFallback": {
+      "city": "广州市"
+    }
+  },
+  "weather": {
+    "enabled": true,
+    "provider": "open-meteo",
+    "forecastEndpoint": "https://api.open-meteo.com/v1/forecast",
+    "geocodingEndpoint": "https://geocoding-api.open-meteo.com/v1/search",
+    "autoDetectLocation": true,
+    "requestLocationPermission": false,
+    "city": "广州市",
+    "latitude": 23.1291,
+    "longitude": 113.2644,
+    "cacheTtl": "today"
+  },
+  "appearance": {
+    "accent": "#ff9fb5",
+    "accent2": "#9ad7ff",
+    "backgroundImage": "",
+    "enableMotion": true,
+    "glassStrength": 0.48
+  },
+  "hitokoto": {
+    "enabled": true,
+    "endpoint": "https://v1.hitokoto.cn/",
+    "refreshInterval": 3600000
+  },
+  "socials": [
+    {
+      "id": "github",
+      "label": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/Yachiyo-5i"
+    },
+    {
+      "id": "calendar",
+      "label": "日历",
+      "icon": "calendar",
+      "url": ""
+    },
+    {
+      "id": "mail",
+      "label": "Email",
+      "icon": "mail",
+      "url": "mailto:me@yachiyo.im"
+    },
+    {
+      "id": "music",
+      "label": "音乐",
+      "icon": "music",
+      "url": ""
+    },
+    {
+      "id": "telegram",
+      "label": "Telegram",
+      "icon": "send",
+      "url": ""
+    }
+  ],
+  "links": [
+    {
+      "id": "Index",
+      "title": "主页",
+      "description": "返回主站与个人入口",
+      "icon": "rss",
+      "url": "https://yachiyo.im"
+    },
+    {
+      "id": "Proxy",
+      "title": "中转站",
+      "description": "AIAPI服务与转发入口",
+      "icon": "book-open",
+      "url": "https://api.yachiyo.im"
+    },
+    {
+      "id": "store",
+      "title": "发卡网",
+      "description": "自助购买API额度",
+      "icon": "shopping-cart",
+      "url": "https://pay.ldxp.cn/shop/UR9VV6OK"
+    }
+  ],
+  "player": {
+    "enabled": true,
+    "provider": "qq",
+    "playlistUrl": "https://y.qq.com/n/ryqq_v2/playlist/9731646350?ADTAG=h5_share_playlist&redirecttag=mn.redirect.custom&mnst=0.84",
+    "autoplay": true,
+    "title": "月見ヤチヨ",
+    "artist": "Yachiyo radio"
+  }
+}
