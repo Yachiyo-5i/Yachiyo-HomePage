@@ -97,20 +97,14 @@ const defaultConfig = {
     autoDetect: true,
     fallbackLocale: "zh-CN",
     fallbackTimeZone: "Asia/Shanghai",
-    weatherFallback: {
-      city: "广州市",
-    },
   },
   weather: {
     enabled: true,
     provider: "open-meteo",
     forecastEndpoint: "https://api.open-meteo.com/v1/forecast",
-    geocodingEndpoint: "https://geocoding-api.open-meteo.com/v1/search",
+    geoEndpoint: "/api/geo",
+    reverseGeocodeEndpoint: "https://api.bigdatacloud.net/data/reverse-geocode-client",
     autoDetectLocation: true,
-    requestLocationPermission: false,
-    city: "广州市",
-    latitude: 23.1291,
-    longitude: 113.2644,
     cacheTtl: "today",
   },
   appearance: {
@@ -169,10 +163,6 @@ function mergeConfig(config) {
     locale: {
       ...defaultConfig.locale,
       ...(config?.locale ?? {}),
-      weatherFallback: {
-        ...defaultConfig.locale.weatherFallback,
-        ...(config?.locale?.weatherFallback ?? {}),
-      },
     },
     appearance: {
       ...defaultConfig.appearance,
@@ -482,17 +472,11 @@ function getHitokotoRequestUrl(hitokotoConfig) {
 }
 
 function useWeather(config, clock) {
-  const cacheKey = useMemo(
-    () => getWeatherCacheKey(config.weather, clock),
-    [clock.locale, clock.timeZone, config.weather],
-  );
   const todayKey = useMemo(
     () => getLocalDateKey(new Date(), clock.locale, clock.timeZone),
     [clock.date, clock.locale, clock.timeZone],
   );
-  const [weather, setWeather] = useState(() =>
-    readWeatherCache(cacheKey, todayKey) ?? createEmptyWeather(),
-  );
+  const [weather, setWeather] = useState(createEmptyWeather);
 
   useEffect(() => {
     if (!config.weather.enabled || config.weather.provider !== "open-meteo") {
@@ -500,26 +484,25 @@ function useWeather(config, clock) {
     }
 
     let alive = true;
-    const cached = readWeatherCache(cacheKey, todayKey);
-    if (cached) {
-      setWeather(cached);
-      return () => {
-        alive = false;
-      };
-    }
-
     setWeather(createEmptyWeather());
 
     async function loadWeather() {
       try {
-        const location = await resolveWeatherLocation(config, clock.locale);
+        const location = await resolveWeatherLocation(config.weather);
         if (!alive || !location) return;
+
+        const cacheKey = getWeatherCacheKey(config.weather, clock, location);
+        const cached = readWeatherCache(cacheKey, todayKey);
+        if (cached) {
+          setWeather(cached);
+          return;
+        }
 
         const params = new URLSearchParams({
           latitude: String(location.latitude),
           longitude: String(location.longitude),
           current: "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m",
-          timezone: clock.timeZone || "auto",
+          timezone: location.timeZone || clock.timeZone || "auto",
           forecast_days: "1",
         });
         const response = await fetch(`${config.weather.forecastEndpoint}?${params}`, {
@@ -560,11 +543,9 @@ function useWeather(config, clock) {
     return () => {
       alive = false;
     };
-  }, [cacheKey, clock.locale, clock.timeZone, config, todayKey]);
+  }, [clock.locale, clock.timeZone, config.weather, todayKey]);
 
-  return weather.cacheKey === cacheKey && weather.dateKey === todayKey
-    ? weather
-    : createEmptyWeather();
+  return weather.dateKey === todayKey ? weather : createEmptyWeather();
 }
 
 function usePosterBackground() {
@@ -666,13 +647,14 @@ function writeWeatherCache(weather) {
   }
 }
 
-function getWeatherCacheKey(weatherConfig, clock) {
+function getWeatherCacheKey(weatherConfig, clock, location) {
   const source = [
     weatherConfig.provider || "open-meteo",
-    weatherConfig.autoDetectLocation ? "auto" : "fixed",
-    weatherConfig.city || "",
-    weatherConfig.latitude ?? "",
-    weatherConfig.longitude ?? "",
+    weatherConfig.autoDetectLocation ? "auto" : "manual",
+    location.source || "",
+    Number(location.latitude).toFixed(4),
+    Number(location.longitude).toFixed(4),
+    location.timeZone || "",
     clock.locale || "",
     clock.timeZone || "",
   ];
@@ -699,22 +681,41 @@ function getLocalDateKey(date, locale, timeZone) {
   }
 }
 
-async function resolveWeatherLocation(config, locale) {
-  const browserLocation = await getBrowserWeatherLocation(config.weather);
-  if (browserLocation) return browserLocation;
+async function resolveWeatherLocation(weatherConfig) {
+  const edgeLocation = await getEdgeWeatherLocation(weatherConfig);
+  if (edgeLocation) return edgeLocation;
 
-  if (isFiniteCoordinate(config.weather.latitude, config.weather.longitude)) {
-    return {
-      latitude: Number(config.weather.latitude),
-      longitude: Number(config.weather.longitude),
-      label: config.weather.city || config.locale.weatherFallback.city || "当前位置",
-    };
+  return getBrowserWeatherLocation(weatherConfig);
+}
+
+async function getEdgeWeatherLocation(weatherConfig) {
+  if (
+    typeof window === "undefined" ||
+    !weatherConfig.autoDetectLocation ||
+    !weatherConfig.geoEndpoint
+  ) {
+    return null;
   }
 
-  const cityLocation = await geocodeWeatherCity(config.weather, locale);
-  if (cityLocation) return cityLocation;
+  try {
+    const response = await fetch(weatherConfig.geoEndpoint, {
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
 
-  return null;
+    const data = await response.json();
+    if (!isFiniteCoordinate(data?.latitude, data?.longitude)) return null;
+
+    return {
+      latitude: Number(data.latitude),
+      longitude: Number(data.longitude),
+      label: data.city || data.region || data.country || "",
+      timeZone: data.timezone || "",
+      source: "edge",
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function getBrowserWeatherLocation(weatherConfig) {
@@ -726,11 +727,6 @@ async function getBrowserWeatherLocation(weatherConfig) {
     return null;
   }
 
-  if (!weatherConfig.requestLocationPermission) {
-    const permission = await getGeolocationPermissionState();
-    if (permission !== "granted") return null;
-  }
-
   try {
     const position = await new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -740,58 +736,51 @@ async function getBrowserWeatherLocation(weatherConfig) {
       });
     });
 
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+    const label = await reverseGeocodeWeatherLocation(
+      weatherConfig,
+      latitude,
+      longitude,
+    );
+
     return {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      label: weatherConfig.locationLabel || "当前位置",
+      latitude,
+      longitude,
+      label,
+      source: "browser",
     };
   } catch {
     return null;
   }
 }
 
-async function getGeolocationPermissionState() {
-  if (typeof navigator === "undefined" || !navigator.permissions) return "prompt";
+async function reverseGeocodeWeatherLocation(weatherConfig, latitude, longitude) {
+  if (!weatherConfig.reverseGeocodeEndpoint) return "";
 
   try {
-    const status = await navigator.permissions.query({ name: "geolocation" });
-    return status.state;
+    const params = new URLSearchParams({
+      latitude: String(latitude),
+      longitude: String(longitude),
+      localityLanguage: "zh",
+    });
+    const response = await fetch(`${weatherConfig.reverseGeocodeEndpoint}?${params}`, {
+      cache: "no-store",
+    });
+
+    if (!response.ok) return "";
+
+    const data = await response.json();
+    return (
+      data.city ||
+      data.locality ||
+      data.principalSubdivision ||
+      data.countryName ||
+      ""
+    );
   } catch {
-    return "prompt";
+    return "";
   }
-}
-
-async function geocodeWeatherCity(weatherConfig, locale) {
-  const city = weatherConfig.city?.trim();
-  if (!city || !weatherConfig.geocodingEndpoint) return null;
-
-  const params = new URLSearchParams({
-    name: city,
-    count: "1",
-    language: getWeatherLanguage(locale),
-    format: "json",
-  });
-  const response = await fetch(`${weatherConfig.geocodingEndpoint}?${params}`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Weather geocoding failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const result = data?.results?.[0];
-  if (!result || !isFiniteCoordinate(result.latitude, result.longitude)) return null;
-
-  return {
-    latitude: Number(result.latitude),
-    longitude: Number(result.longitude),
-    label: [result.name, result.admin1].filter(Boolean).join(" · ") || city,
-  };
-}
-
-function getWeatherLanguage(locale) {
-  return String(locale || "zh-CN").toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 function isFiniteCoordinate(latitude, longitude) {
@@ -984,7 +973,7 @@ function InfoCard({ clock, weather, hitokoto, onRefreshHitokoto, hitokotoLoading
         <span>{clock.date}</span>
         <strong>{clock.time}</strong>
         <p className={weather.text ? "weather-line" : "weather-line loading"}>
-          {weather.text ? `${weather.city} ${weather.text}` : "\u00a0"}
+          {weather.text ? [weather.city, weather.text].filter(Boolean).join(" ") : "\u00a0"}
         </p>
       </div>
     </section>

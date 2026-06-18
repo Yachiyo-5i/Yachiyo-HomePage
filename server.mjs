@@ -33,6 +33,11 @@ createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/geo") {
+      sendJson(res, 200, {});
+      return;
+    }
+
     await serveStatic(url, res);
   } catch (error) {
     console.error(error);
