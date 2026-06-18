@@ -148,7 +148,7 @@ async function handleSongUrl(url, res) {
   }
 
   sendJson(res, 200, {
-    url: new URL(purl, sip).toString(),
+    url: normalizePlaybackUrl(new URL(purl, sip).toString()),
     expiresIn: 3600,
   });
 }
@@ -196,6 +196,10 @@ function normalizeTrack(song) {
 
 function normalizeCover(url) {
   if (!url) return "";
+  return url.startsWith("http://") ? url.replace("http://", "https://") : url;
+}
+
+function normalizePlaybackUrl(url) {
   return url.startsWith("http://") ? url.replace("http://", "https://") : url;
 }
 

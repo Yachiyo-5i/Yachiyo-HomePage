@@ -1,23 +1,4 @@
-export async function onRequestGet({ request, params }) {
-  try {
-    const url = new URL(request.url);
-
-    if (params.endpoint === "playlist") {
-      return handlePlaylist(url);
-    }
-
-    if (params.endpoint === "song-url") {
-      return handleSongUrl(url);
-    }
-
-    return sendJson({ error: "Not found" }, 404);
-  } catch (error) {
-    console.error(error);
-    return sendJson({ error: "Internal server error" }, 500);
-  }
-}
-
-async function handlePlaylist(url) {
+export async function handlePlaylist(url) {
   const raw = url.searchParams.get("url") || url.searchParams.get("id") || "";
   const id = extractPlaylistId(raw);
 
@@ -65,7 +46,7 @@ async function handlePlaylist(url) {
   });
 }
 
-async function handleSongUrl(url) {
+export async function handleSongUrl(url) {
   const mid = url.searchParams.get("mid");
   const mediaMid = url.searchParams.get("mediaMid") || mid;
 
@@ -124,8 +105,18 @@ async function handleSongUrl(url) {
   }
 
   return sendJson({
-    url: new URL(purl, sip).toString(),
+    url: normalizePlaybackUrl(new URL(purl, sip).toString()),
     expiresIn: 3600,
+  });
+}
+
+export function sendJson(value, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
   });
 }
 
@@ -178,6 +169,10 @@ function normalizeCover(url) {
   return url.startsWith("http://") ? url.replace("http://", "https://") : url;
 }
 
+function normalizePlaybackUrl(url) {
+  return url.startsWith("http://") ? url.replace("http://", "https://") : url;
+}
+
 function stripHtml(value) {
   return value.replace(/<[^>]*>/g, "").trim();
 }
@@ -190,14 +185,3 @@ function qqHeaders() {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
   };
 }
-
-function sendJson(value, status = 200) {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
-}
-
