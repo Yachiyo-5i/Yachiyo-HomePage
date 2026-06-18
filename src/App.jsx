@@ -706,10 +706,17 @@ async function getEdgeWeatherLocation(weatherConfig) {
     const data = await response.json();
     if (!isFiniteCoordinate(data?.latitude, data?.longitude)) return null;
 
+    const latitude = Number(data.latitude);
+    const longitude = Number(data.longitude);
+    const fallbackLabel = data.city || data.region || data.country || "";
+    const label =
+      (await reverseGeocodeWeatherLocation(weatherConfig, latitude, longitude)) ||
+      fallbackLabel;
+
     return {
-      latitude: Number(data.latitude),
-      longitude: Number(data.longitude),
-      label: data.city || data.region || data.country || "",
+      latitude,
+      longitude,
+      label,
       timeZone: data.timezone || "",
       source: "edge",
     };
