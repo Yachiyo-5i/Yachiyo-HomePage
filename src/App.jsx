@@ -61,16 +61,16 @@ const WEATHER_CODES = {
 };
 const POSTER_BACKGROUND_IMAGES = {
   landscape: [
-    "/chou-kaguyahime-posters/landscape/official-kv-01.jpg",
-    "/chou-kaguyahime-posters/landscape/official-kv-02.jpg",
-    "/chou-kaguyahime-posters/landscape/official-kv-03.jpg",
-    "/chou-kaguyahime-posters/landscape/yachiyo-landscape-1980x1080.png",
-    "/chou-kaguyahime-posters/landscape/yachiyo-landscape-2103x1200.jpg",
-    "/chou-kaguyahime-posters/landscape/yachiyo-large-4320x3400.jpg",
+    "/chou-kaguyahime-posters/landscape/official-kv-01.webp",
+    "/chou-kaguyahime-posters/landscape/official-kv-02.webp",
+    "/chou-kaguyahime-posters/landscape/official-kv-03.webp",
+    "/chou-kaguyahime-posters/landscape/yachiyo-landscape-1980x1080.webp",
+    "/chou-kaguyahime-posters/landscape/yachiyo-landscape-2103x1200.webp",
+    "/chou-kaguyahime-posters/landscape/yachiyo-large-4320x3400.webp",
   ],
   portrait: [
-    "/chou-kaguyahime-posters/portrait/official-yachiyo-wallpaper-01.png",
-    "/chou-kaguyahime-posters/portrait/official-yachiyo-wallpaper-02.png",
+    "/chou-kaguyahime-posters/portrait/official-yachiyo-wallpaper-01.webp",
+    "/chou-kaguyahime-posters/portrait/official-yachiyo-wallpaper-02.webp",
   ],
 };
 
