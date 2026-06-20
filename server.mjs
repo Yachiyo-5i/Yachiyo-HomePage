@@ -2,9 +2,13 @@ import { createReadStream, existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { createServer } from "node:http";
+import { isIP } from "node:net";
 
 const root = resolve("dist");
 const port = Number(process.env.PORT || 4173);
+const geoCache = new Map();
+const GEO_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const GEO_LOOKUP_TIMEOUT_MS = 8000;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -34,7 +38,7 @@ createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/geo") {
-      sendJson(res, 200, {});
+      await handleGeo(req, res);
       return;
     }
 
@@ -46,6 +50,155 @@ createServer(async (req, res) => {
 }).listen(port, "127.0.0.1", () => {
   console.log(`Home server listening at http://127.0.0.1:${port}/`);
 });
+
+async function handleGeo(req, res) {
+  const ip = getClientIp(req);
+
+  if (!ip) {
+    sendJson(res, 200, {});
+    return;
+  }
+
+  const cached = readGeoCache(ip);
+  if (cached) {
+    sendJson(res, 200, cached);
+    return;
+  }
+
+  const location = await lookupIpLocation(ip);
+  if (isFiniteCoordinate(location.latitude, location.longitude)) {
+    writeGeoCache(ip, location);
+  }
+  sendJson(res, 200, location);
+}
+
+function getClientIp(req) {
+  const forwardedFor = String(req.headers["x-forwarded-for"] || "")
+    .split(",")
+    .map((value) => value.trim());
+  const candidates = [
+    req.headers["cf-connecting-ip"],
+    ...forwardedFor,
+    req.headers["x-real-ip"],
+    req.socket.remoteAddress,
+  ];
+
+  return candidates.map(normalizeIp).find(isPublicIp) || "";
+}
+
+function normalizeIp(value) {
+  let ip = String(value || "").trim();
+  if (!ip) return "";
+
+  if (ip.startsWith("[") && ip.includes("]")) {
+    ip = ip.slice(1, ip.indexOf("]"));
+  }
+
+  ip = ip.replace(/^::ffff:/i, "");
+
+  if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(ip)) {
+    ip = ip.slice(0, ip.lastIndexOf(":"));
+  }
+
+  return ip;
+}
+
+function isPublicIp(ip) {
+  const version = isIP(ip);
+  if (version === 4) return !isPrivateIpv4(ip);
+  if (version === 6) return !isPrivateIpv6(ip);
+  return false;
+}
+
+function isPrivateIpv4(ip) {
+  const parts = ip.split(".").map(Number);
+  const [a, b] = parts;
+
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    (a >= 224 && a <= 255)
+  );
+}
+
+function isPrivateIpv6(ip) {
+  const normalized = ip.toLowerCase();
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe80:") ||
+    normalized.startsWith("2001:db8:")
+  );
+}
+
+function readGeoCache(ip) {
+  const cached = geoCache.get(ip);
+  if (!cached || cached.expiresAt <= Date.now()) {
+    geoCache.delete(ip);
+    return null;
+  }
+
+  return cached.location;
+}
+
+function writeGeoCache(ip, location) {
+  geoCache.set(ip, {
+    location,
+    expiresAt: Date.now() + GEO_CACHE_TTL_MS,
+  });
+}
+
+function isFiniteCoordinate(latitude, longitude) {
+  return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
+}
+
+async function lookupIpLocation(ip) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GEO_LOOKUP_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      `https://get.geojs.io/v1/ip/geo/${encodeURIComponent(ip)}.json`,
+      {
+        signal: controller.signal,
+        headers: {
+          accept: "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) return {};
+
+    const data = await response.json();
+    const latitude = Number(data.latitude);
+    const longitude = Number(data.longitude);
+
+    if (!isFiniteCoordinate(latitude, longitude)) {
+      return {};
+    }
+
+    return {
+      latitude,
+      longitude,
+      city: data.city || "",
+      region: data.region || data.region_name || "",
+      country: data.country || "",
+      timezone: data.timezone || "",
+    };
+  } catch {
+    return {};
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function handlePlaylist(url, res) {
   const raw = url.searchParams.get("url") || url.searchParams.get("id") || "";
