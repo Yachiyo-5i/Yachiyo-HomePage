@@ -7,8 +7,67 @@ import { isIP } from "node:net";
 const root = resolve("dist");
 const port = Number(process.env.PORT || 4173);
 const geoCache = new Map();
-const GEO_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const GEO_LOOKUP_TIMEOUT_MS = 8000;
+const geoLookupAttempts = [];
+const GEO_LOOKUP_PROVIDER = String(process.env.GEO_LOOKUP_PROVIDER || "")
+  .trim()
+  .toLowerCase();
+const GEO_CACHE_TTL_MS = parsePositiveInteger(
+  process.env.GEO_CACHE_TTL_MS,
+  6 * 60 * 60 * 1000,
+);
+const GEO_CACHE_MAX_ENTRIES = parsePositiveInteger(
+  process.env.GEO_CACHE_MAX_ENTRIES,
+  512,
+);
+const GEO_LOOKUP_TIMEOUT_MS = parsePositiveInteger(
+  process.env.GEO_LOOKUP_TIMEOUT_MS,
+  3000,
+);
+const GEO_LOOKUP_RATE_LIMIT = parsePositiveInteger(
+  process.env.GEO_LOOKUP_RATE_LIMIT,
+  60,
+);
+const GEO_LOOKUP_RATE_WINDOW_MS = parsePositiveInteger(
+  process.env.GEO_LOOKUP_RATE_WINDOW_MS,
+  60 * 1000,
+);
+const specialIpRanges = parseIpRanges([
+  "0.0.0.0/8",
+  "10.0.0.0/8",
+  "100.64.0.0/10",
+  "127.0.0.0/8",
+  "169.254.0.0/16",
+  "172.16.0.0/12",
+  "192.0.0.0/24",
+  "192.0.2.0/24",
+  "192.88.99.0/24",
+  "192.168.0.0/16",
+  "198.18.0.0/15",
+  "198.51.100.0/24",
+  "203.0.113.0/24",
+  "224.0.0.0/4",
+  "240.0.0.0/4",
+  "::/128",
+  "::1/128",
+  "::/96",
+  "::ffff:0:0/96",
+  "64:ff9b::/96",
+  "64:ff9b:1::/48",
+  "100::/64",
+  "2001::/23",
+  "2001:db8::/32",
+  "2002::/16",
+  "fc00::/7",
+  "fe80::/10",
+  "fec0::/10",
+  "ff00::/8",
+]);
+const trustedProxyRanges = parseIpRanges(
+  parseCsv(process.env.GEO_TRUSTED_PROXY_RANGES, [
+    "127.0.0.0/8",
+    "::1/128",
+  ]),
+);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -54,7 +113,7 @@ createServer(async (req, res) => {
 async function handleGeo(req, res) {
   const ip = getClientIp(req);
 
-  if (!ip) {
+  if (!ip || GEO_LOOKUP_PROVIDER !== "geojs") {
     sendJson(res, 200, {});
     return;
   }
@@ -62,6 +121,11 @@ async function handleGeo(req, res) {
   const cached = readGeoCache(ip);
   if (cached) {
     sendJson(res, 200, cached);
+    return;
+  }
+
+  if (!consumeGeoLookupAttempt()) {
+    sendJson(res, 200, {});
     return;
   }
 
@@ -73,6 +137,11 @@ async function handleGeo(req, res) {
 }
 
 function getClientIp(req) {
+  const remoteAddress = normalizeIp(req.socket.remoteAddress);
+  if (!isTrustedProxySource(remoteAddress)) {
+    return isPublicIp(remoteAddress) ? remoteAddress : "";
+  }
+
   const forwardedFor = String(req.headers["x-forwarded-for"] || "")
     .split(",")
     .map((value) => value.trim());
@@ -80,10 +149,16 @@ function getClientIp(req) {
     req.headers["cf-connecting-ip"],
     ...forwardedFor,
     req.headers["x-real-ip"],
-    req.socket.remoteAddress,
+    remoteAddress,
   ];
 
   return candidates.map(normalizeIp).find(isPublicIp) || "";
+}
+
+function isTrustedProxySource(ip) {
+  const version = isIP(ip);
+  if (version === 4 || version === 6) return ipInRanges(ip, trustedProxyRanges);
+  return false;
 }
 
 function normalizeIp(value) {
@@ -105,38 +180,8 @@ function normalizeIp(value) {
 
 function isPublicIp(ip) {
   const version = isIP(ip);
-  if (version === 4) return !isPrivateIpv4(ip);
-  if (version === 6) return !isPrivateIpv6(ip);
+  if (version === 4 || version === 6) return !ipInRanges(ip, specialIpRanges);
   return false;
-}
-
-function isPrivateIpv4(ip) {
-  const parts = ip.split(".").map(Number);
-  const [a, b] = parts;
-
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    (a >= 224 && a <= 255)
-  );
-}
-
-function isPrivateIpv6(ip) {
-  const normalized = ip.toLowerCase();
-  return (
-    normalized === "::" ||
-    normalized === "::1" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    normalized.startsWith("fe80:") ||
-    normalized.startsWith("2001:db8:")
-  );
 }
 
 function readGeoCache(ip) {
@@ -146,18 +191,130 @@ function readGeoCache(ip) {
     return null;
   }
 
+  geoCache.delete(ip);
+  geoCache.set(ip, cached);
   return cached.location;
 }
 
 function writeGeoCache(ip, location) {
+  while (geoCache.size >= GEO_CACHE_MAX_ENTRIES) {
+    const oldestKey = geoCache.keys().next().value;
+    if (!oldestKey) break;
+    geoCache.delete(oldestKey);
+  }
+
   geoCache.set(ip, {
     location,
     expiresAt: Date.now() + GEO_CACHE_TTL_MS,
   });
 }
 
+function consumeGeoLookupAttempt() {
+  const now = Date.now();
+  const windowStart = now - GEO_LOOKUP_RATE_WINDOW_MS;
+
+  while (geoLookupAttempts.length && geoLookupAttempts[0] <= windowStart) {
+    geoLookupAttempts.shift();
+  }
+
+  if (geoLookupAttempts.length >= GEO_LOOKUP_RATE_LIMIT) {
+    return false;
+  }
+
+  geoLookupAttempts.push(now);
+  return true;
+}
+
 function isFiniteCoordinate(latitude, longitude) {
   return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
+}
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseCsv(value, fallback) {
+  if (!value) return fallback;
+  return String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseIpRanges(ranges) {
+  return ranges.map(parseCidr).filter(Boolean);
+}
+
+function parseCidr(range) {
+  const [address, prefixValue] = String(range).split("/");
+  const version = isIP(address);
+  const maxPrefix = version === 4 ? 32 : version === 6 ? 128 : 0;
+  const prefix = prefixValue === undefined ? maxPrefix : Number(prefixValue);
+
+  if (!version || !Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) {
+    return null;
+  }
+
+  return { value: ipToBigInt(address, version), version, prefix, bits: maxPrefix };
+}
+
+function ipInRanges(ip, ranges) {
+  const version = isIP(ip);
+  if (!version) return false;
+
+  const value = ipToBigInt(ip, version);
+  return ranges.some((range) => {
+    if (range.version !== version) return false;
+    const hostBits = BigInt(range.bits - range.prefix);
+    return value >> hostBits === range.value >> hostBits;
+  });
+}
+
+function ipToBigInt(ip, version = isIP(ip)) {
+  if (version === 4) return ipv4ToBigInt(ip);
+  if (version === 6) return ipv6ToBigInt(ip);
+  return 0n;
+}
+
+function ipv4ToBigInt(ip) {
+  return ip
+    .split(".")
+    .map(Number)
+    .reduce((total, part) => (total << 8n) + BigInt(part), 0n);
+}
+
+function ipv6ToBigInt(ip) {
+  const normalized = ip.toLowerCase();
+  const ipv4Match = normalized.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  const ipv4Parts = ipv4Match
+    ? ipv4Match[1].split(".").map(Number)
+    : [];
+  const withoutIpv4 = ipv4Match
+    ? normalized.slice(0, normalized.length - ipv4Match[1].length) +
+      ipv4Parts
+        .reduce((parts, part, index) => {
+          if (index % 2 === 0) parts.push(part << 8);
+          else parts[parts.length - 1] += part;
+          return parts;
+        }, [])
+        .map((part) => part.toString(16))
+        .join(":")
+    : normalized;
+  const [head = "", tail = ""] = withoutIpv4.split("::");
+  const headParts = head ? head.split(":").filter(Boolean) : [];
+  const tailParts = tail ? tail.split(":").filter(Boolean) : [];
+  const missingParts = 8 - headParts.length - tailParts.length;
+  const parts = [
+    ...headParts,
+    ...Array(Math.max(0, missingParts)).fill("0"),
+    ...tailParts,
+  ];
+
+  return parts.reduce(
+    (total, part) => (total << 16n) + BigInt(Number.parseInt(part || "0", 16)),
+    0n,
+  );
 }
 
 async function lookupIpLocation(ip) {
